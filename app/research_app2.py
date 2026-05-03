@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from agents.query_domain_agent import detect_domains, refine_query
 from agents.ranking_agent import rank_papers
 from agents.retrieval_filter_agent import retrieve_papers
-from agents.writing_agent import improve_paragraph, live_analyze
+from agents.writing_agent import get_llm_debug_status, improve_paragraph, live_analyze
 from main import run_pipeline
 
 st.set_page_config(
