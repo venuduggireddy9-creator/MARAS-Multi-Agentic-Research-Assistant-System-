@@ -9,7 +9,6 @@ load_dotenv()
 
 api_key = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=api_key) if api_key else None
-_llm_failed = False
 
 
 def _comparison_table(analyses):
@@ -165,15 +164,13 @@ def _valid_insights(insights, analyses):
 
 
 def generate_insights(analyses):
-    global _llm_failed
-
     comparison = _comparison_table(analyses)
 
     if not analyses:
         insights, gaps, recs = _data_driven_reasoning([])
         return comparison, insights, gaps, recs
 
-    if client is None or _llm_failed:
+    if client is None:
         insights, gaps, recs = _data_driven_reasoning(analyses)
         return comparison, insights, gaps, recs
 
@@ -221,7 +218,6 @@ Extracted analyses:
         if _valid_insights(insights, analyses):
             return comparison, insights, gaps, recs
     except Exception as exc:
-        _llm_failed = True
         print("Insight generation error:", exc)
 
     insights, gaps, recs = _data_driven_reasoning(analyses)

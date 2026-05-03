@@ -1,5 +1,6 @@
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -7,13 +8,11 @@ from groq import Groq
 load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY")) if os.getenv("GROQ_API_KEY") else None
-_llm_failed = False
+_LLM_MAX_WORKERS = 6
 
 
 def _call_llm(prompt, temperature=0.3, max_tokens=700):
-    global _llm_failed
-
-    if not client or _llm_failed:
+    if not client:
         return ""
     try:
         return client.chat.completions.create(
@@ -23,7 +22,6 @@ def _call_llm(prompt, temperature=0.3, max_tokens=700):
             max_tokens=max_tokens,
         ).choices[0].message.content.strip()
     except Exception:
-        _llm_failed = True
         return ""
 
 
@@ -47,6 +45,13 @@ def _build_context_block(analyses, insights, gaps, recommendations):
     return block[:3500]
 
 
+def _run_llm_task(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        return None
+
+
 def live_analyze(user_text, section, analyses, insights, gaps, recommendations):
     if not user_text or len(user_text.strip()) < 10:
         return _empty_result()
@@ -60,17 +65,43 @@ def live_analyze(user_text, section, analyses, insights, gaps, recommendations):
     context = _build_context_block(analyses, insights, gaps, recommendations)
     text = user_text.strip()
 
+    llm_jobs = [
+        ("suggestions", _live_suggestions, (text, section, context)),
+        ("context_hints", _context_aware_hints, (text, context)),
+        ("autocomplete", _live_autocomplete, (text, context)),
+        ("gap_alignment", _gap_alignment, (text, gaps)),
+        ("style_improved", _style_improvement, (text, section)),
+        ("flow_issue", _flow_check, (text, section)),
+        ("experiment_suggestion", _experiment_suggestion, (text, context)),
+        ("metric_suggestion", _metric_suggestion, (text, context)),
+        ("novel_idea", _novel_idea, (text, context)),
+    ]
+
+    out = {k: None for k, _, _ in llm_jobs}
+    workers = min(_LLM_MAX_WORKERS, len(llm_jobs))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {
+            executor.submit(_run_llm_task, fn, *args): key
+            for key, fn, args in llm_jobs
+        }
+        for fut in as_completed(future_map):
+            key = future_map[fut]
+            try:
+                out[key] = fut.result()
+            except Exception:
+                out[key] = None
+
     return {
-        "suggestions": _live_suggestions(text, section, context),
-        "context_hints": _context_aware_hints(text, context),
-        "autocomplete": _live_autocomplete(text, context),
-        "gap_alignment": _gap_alignment(text, gaps),
-        "style_improved": _style_improvement(text, section),
+        "suggestions": out["suggestions"] or [],
+        "context_hints": out["context_hints"] or [],
+        "autocomplete": out["autocomplete"] or "",
+        "gap_alignment": out["gap_alignment"] or "",
+        "style_improved": out["style_improved"] or "",
         "redundancy": _redundancy_check(text),
-        "flow_issue": _flow_check(text, section),
-        "experiment_suggestion": _experiment_suggestion(text, context),
-        "metric_suggestion": _metric_suggestion(text, context),
-        "novel_idea": _novel_idea(text, context),
+        "flow_issue": out["flow_issue"],
+        "experiment_suggestion": out["experiment_suggestion"] or "",
+        "metric_suggestion": out["metric_suggestion"] or "",
+        "novel_idea": out["novel_idea"] or "",
         "section_guide": _section_guide(section),
     }
 
@@ -111,7 +142,7 @@ User wrote:
 Give 3 short, specific suggestions grounded in the research context.
 Each suggestion must start with "-".
 Do not give generic advice."""
-    raw = _call_llm(prompt, temperature=0.3, max_tokens=300)
+    raw = _call_llm(prompt, temperature=0.3, max_tokens=280)
     bullets = [line.strip().lstrip("-").strip() for line in raw.splitlines() if line.strip().startswith("-")]
     return bullets[:3] if bullets else ([raw] if raw else [])
 
@@ -125,7 +156,7 @@ User wrote:
 
 List up to 2 specific points from the retrieved papers that support, contradict, or extend the user's claim.
 Each line must start with "-". Be specific."""
-    raw = _call_llm(prompt, temperature=0.2, max_tokens=250)
+    raw = _call_llm(prompt, temperature=0.2, max_tokens=220)
     hints = [line.strip().lstrip("-").strip() for line in raw.splitlines() if line.strip().startswith("-")]
     return hints[:2]
 
@@ -143,9 +174,7 @@ The user stopped here:
 \"{text}\"
 
 Continue only the current sentence in 1-2 lines. Do not repeat the user's text."""
-    return _call_llm(prompt, temperature=0.4, max_tokens=120)
-
-
+    return _call_llm(prompt, temperature=0.4, max_tokens=100)
 
 
 def _gap_alignment(text, gaps):
@@ -160,7 +189,7 @@ User wrote:
 
 Does the user's text align with any identified research gap?
 One line only."""
-    return _call_llm(prompt, temperature=0.2, max_tokens=120)
+    return _call_llm(prompt, temperature=0.2, max_tokens=100)
 
 
 def _style_improvement(text, section):
@@ -170,7 +199,7 @@ Text:
 \"{text}\"
 
 Return only the improved version. Keep it to 1-2 sentences."""
-    return _call_llm(prompt, temperature=0.3, max_tokens=150)
+    return _call_llm(prompt, temperature=0.3, max_tokens=140)
 
 
 def _redundancy_check(text):
@@ -202,7 +231,7 @@ Text:
 
 Check only for logical flow issues. If there is an issue, start with "Flow issue -".
 If no issue, return "OK"."""
-    result = _call_llm(prompt, temperature=0.2, max_tokens=80)
+    result = _call_llm(prompt, temperature=0.2, max_tokens=70)
     return None if result.strip().upper().startswith("OK") else result.strip()
 
 
@@ -215,7 +244,7 @@ User is writing about:
 
 Suggest one specific experiment or comparison this work could include, referencing methods or datasets from the papers.
 One line only."""
-    return _call_llm(prompt, temperature=0.4, max_tokens=120)
+    return _call_llm(prompt, temperature=0.4, max_tokens=100)
 
 
 def _metric_suggestion(text, context):
@@ -227,7 +256,7 @@ User is writing:
 
 List 3-5 relevant evaluation metrics drawn from the retrieved papers.
 One line only."""
-    return _call_llm(prompt, temperature=0.2, max_tokens=100)
+    return _call_llm(prompt, temperature=0.2, max_tokens=90)
 
 
 def _novel_idea(text, context):
@@ -239,7 +268,7 @@ User is writing about:
 
 Suggest one novel research idea that combines or extends concepts in the retrieved papers.
 One line only."""
-    return _call_llm(prompt, temperature=0.7, max_tokens=150)
+    return _call_llm(prompt, temperature=0.7, max_tokens=120)
 
 
 def _section_guide(section):

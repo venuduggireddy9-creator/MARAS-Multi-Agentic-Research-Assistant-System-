@@ -5,7 +5,7 @@ import requests
 import tempfile
 
 
-def extract_text_from_pdf(pdf_url, max_pages=8):
+def extract_text_from_pdf(pdf_url, max_pages=10):
     try:
         response = requests.get(pdf_url, timeout=10)
 

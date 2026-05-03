@@ -1,8 +1,15 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
 .ipynb_checkpoints/
 .streamlit/
 *.log
 .DS_Store
 Thumbs.db
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+data/pdfs/

@@ -1,4 +1,5 @@
 import hashlib
+import html
 import os
 import sys
 import time
@@ -48,8 +49,41 @@ st.markdown(
     }
 
     .main > div {
-        max-width: 1220px;
+        max-width: 1380px;
         padding-top: 1.1rem;
+    }
+
+    .wa-block-title {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+        margin: 0 0 8px 0;
+        font-weight: 700;
+    }
+
+    .wa-editor-wrap {
+        background: rgba(15, 23, 42, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 14px;
+        padding: 14px 16px 16px;
+    }
+
+    .wa-feed-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        max-height: none;
+    }
+
+    .style-improve-card {
+        background: rgba(124, 58, 237, 0.10);
+        border: 1px solid rgba(124, 58, 237, 0.35);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 14px;
+        line-height: 1.55;
+        color: #e8e9ff;
     }
 
     .maras-hero {
@@ -233,7 +267,7 @@ st.markdown("---")
 
 def _extract_uploaded_pdf(uploaded_file):
     doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-    text = " ".join(doc[i].get_text() for i in range(min(8, len(doc))))
+    text = " ".join(doc[i].get_text() for i in range(min(10, len(doc))))
     text = " ".join(text.split())[:8000]
     return {
         "title": f"[Uploaded] {uploaded_file.name.replace('.pdf', '')}",
@@ -341,92 +375,96 @@ if "retrieved" in st.session_state:
 
 if "result" in st.session_state:
     result = st.session_state["result"]
+    analyses = result.get("analyses", [])
+    insights = result.get("insights", "")
+    gaps = result.get("gaps", "")
+    recommendations = result.get("recommendations", "")
 
-    st.subheader("Pipeline Timing Summary")
-    col_a, col_b, col_c = st.columns(3)
-    retrieval_time = st.session_state.get("retrieval_time", 0)
-    analysis_time = st.session_state.get("analysis_time", 0)
-    col_a.metric("Retrieval Time", f"{retrieval_time}s")
-    col_b.metric("Analysis Time", f"{analysis_time}s")
-    col_c.metric("Total Pipeline Time", f"{round(retrieval_time + analysis_time, 2)}s")
-    st.markdown("---")
+    tab_analysis, tab_writing = st.tabs(["Analysis & results", "Writing assistant"])
 
-    st.subheader("Top Relevant Papers")
-    for paper in result.get("papers", []):
-        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-        st.markdown(f"### {paper.get('title', '')} ({paper.get('year', '')})")
-        if paper.get("pdf_url"):
-            st.markdown(f"[Open PDF]({paper['pdf_url']})")
-        st.markdown("</div>", unsafe_allow_html=True)
+    with tab_analysis:
+        st.subheader("Pipeline timing")
+        col_a, col_b, col_c = st.columns(3)
+        retrieval_time = st.session_state.get("retrieval_time", 0)
+        analysis_time = st.session_state.get("analysis_time", 0)
+        col_a.metric("Retrieval time", f"{retrieval_time}s")
+        col_b.metric("Analysis time", f"{analysis_time}s")
+        col_c.metric("Total pipeline time", f"{round(retrieval_time + analysis_time, 2)}s")
+        st.markdown("---")
 
-    st.subheader("Paper-wise Analysis")
-    for analysis in result.get("analyses", []):
-        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
-        st.markdown(f"### {analysis.get('title', '')}")
-        for field in ["problem", "method", "dataset", "performance", "application", "limitations"]:
-            st.markdown(f"**{field.replace('_', ' ').title()}:** {analysis.get(field, 'Not specified')}")
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.subheader("Top relevant papers")
+        for paper in result.get("papers", []):
+            st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+            st.markdown(f"### {paper.get('title', '')} ({paper.get('year', '')})")
+            if paper.get("pdf_url"):
+                st.markdown(f"[Open PDF]({paper['pdf_url']})")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    st.subheader("Cross-Paper Insights")
-    st.markdown(result.get("insights", ""))
+        st.subheader("Paper-wise analysis")
+        for analysis in result.get("analyses", []):
+            st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+            st.markdown(f"### {analysis.get('title', '')}")
+            for field in ["problem", "method", "dataset", "performance", "application", "limitations"]:
+                st.markdown(f"**{field.replace('_', ' ').title()}:** {analysis.get(field, 'Not specified')}")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-    st.subheader("Comparison Table")
-    st.dataframe(pd.DataFrame(result.get("comparison", [])), use_container_width=True)
+        st.subheader("Cross-paper insights")
+        st.markdown(result.get("insights", ""))
 
-    st.subheader("Similarity Heatmap")
-    similarity = result.get("similarity")
-    if similarity is not None and len(similarity) > 1:
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.heatmap(similarity, annot=True, cmap="YlGnBu", ax=ax)
-        st.pyplot(fig)
-        st.markdown("High similarity indicates closely related paper content; low similarity indicates diverse approaches.")
-    else:
-        st.info("Not enough papers for similarity.")
+        st.subheader("Comparison table")
+        st.dataframe(pd.DataFrame(result.get("comparison", [])), use_container_width=True)
 
-    st.subheader("Research Gaps")
-    st.markdown(result.get("gaps", ""))
+        st.subheader("Similarity heatmap")
+        similarity = result.get("similarity")
+        if similarity is not None and len(similarity) > 1:
+            fig, ax = plt.subplots(figsize=(6, 4))
+            sns.heatmap(similarity, annot=True, cmap="YlGnBu", ax=ax)
+            st.pyplot(fig)
+            st.caption("High similarity indicates closely related paper content; low similarity indicates diverse approaches.")
+        else:
+            st.info("Not enough papers for similarity.")
 
-    st.subheader("Recommendations")
-    st.markdown(result.get("recommendations", ""))
+        st.subheader("Research gaps")
+        st.markdown(result.get("gaps", ""))
 
-    st.markdown("---")
-    st.markdown("## Writing Assistant <span class='live-badge'>LIVE</span>", unsafe_allow_html=True)
-    st.caption("Feedback updates as you type after analysis has completed.")
+        st.subheader("Recommendations")
+        st.markdown(result.get("recommendations", ""))
 
-    left, right = st.columns([1, 1], gap="large")
-    with left:
-        section = st.selectbox(
-            "Select Section",
-            ["Introduction", "Related Work", "Methodology", "Conclusion"],
-            key="section_select",
+    with tab_writing:
+        st.markdown(
+            "<p style='margin:0 0 12px 0;'><span class='live-badge'>LIVE</span> "
+            "<span style='color:#b8c0df;font-size:0.95rem;'>Feedback refreshes when you pause typing (10+ characters).</span></p>",
+            unsafe_allow_html=True,
         )
-        user_text = st.text_area(
-            "Write your paragraph:",
-            height=280,
-            placeholder="Start writing your research paragraph here...",
-            key="writing_text",
-        )
-        improve_col, clear_col = st.columns(2)
-        with improve_col:
-            run_improve = st.button("Improve Paragraph", use_container_width=True)
-        with clear_col:
-            if st.button("Clear", use_container_width=True):
-                st.session_state["writing_text"] = ""
-                st.rerun()
 
-    with right:
-        st.markdown("### Live Feedback")
-        analyses = result.get("analyses", [])
-        insights = result.get("insights", "")
-        gaps = result.get("gaps", "")
-        recommendations = result.get("recommendations", "")
+        col_editor, col_feedback = st.columns([0.40, 0.60], gap="large")
 
-        if user_text and len(user_text.strip()) >= 10:
-            content_key = hashlib.md5(f"{user_text}||{section}".encode()).hexdigest()
+        with col_editor:
+            st.markdown("<div class='wa-editor-wrap'>", unsafe_allow_html=True)
+            st.markdown('<p class="wa-block-title">Your draft</p>', unsafe_allow_html=True)
+            section = st.selectbox(
+                "Section",
+                ["Introduction", "Related Work", "Methodology", "Conclusion"],
+                key="section_select",
+            )
+            user_text = st.text_area(
+                "Paragraph",
+                height=320,
+                placeholder="Write your research paragraph here…",
+                key="writing_text",
+            )
+            improve_col, clear_col = st.columns(2)
+            with improve_col:
+                run_improve = st.button("Improve paragraph", use_container_width=True, key="btn_improve_para")
+            with clear_col:
+                if st.button("Clear text", use_container_width=True, key="btn_clear_text"):
+                    st.session_state["writing_text"] = ""
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
 
-            if st.session_state.get("_feedback_key") != content_key:
-                with st.spinner("Analyzing your text..."):
-                    feedback = live_analyze(
+            if run_improve and user_text and len(user_text.strip()) >= 10:
+                with st.spinner("Rewriting with research context…"):
+                    improved = improve_paragraph(
                         user_text=user_text,
                         section=section,
                         analyses=analyses,
@@ -434,77 +472,115 @@ if "result" in st.session_state:
                         gaps=gaps,
                         recommendations=recommendations,
                     )
-                st.session_state["_feedback"] = feedback
-                st.session_state["_feedback_key"] = content_key
-            else:
-                feedback = st.session_state.get("_feedback", {})
-
-            if feedback.get("section_guide"):
-                st.markdown(f"<div class='section-guide'>{feedback['section_guide']}</div>", unsafe_allow_html=True)
-                st.markdown("")
-
-            if feedback.get("suggestions"):
-                st.markdown("**Live Suggestions**")
-                for suggestion in feedback["suggestions"]:
-                    st.markdown(f"<div class='suggestion-box'>- {suggestion}</div>", unsafe_allow_html=True)
-
-            if feedback.get("context_hints"):
-                st.markdown("**From Retrieved Papers**")
-                for hint in feedback["context_hints"]:
-                    st.markdown(f"<div class='hint-box'>- {hint}</div>", unsafe_allow_html=True)
-
-            if feedback.get("gap_alignment"):
-                st.markdown("**Gap Alignment**")
-                st.markdown(f"<div class='warn-box'>{feedback['gap_alignment']}</div>", unsafe_allow_html=True)
-
-            if feedback.get("autocomplete"):
-                st.markdown("**Autocomplete**")
-                st.code(feedback["autocomplete"], language=None)
-                if st.button("Accept Completion"):
-                    st.session_state["writing_text"] = user_text.rstrip() + " " + feedback["autocomplete"]
+                st.markdown('<p class="wa-block-title">Improved paragraph</p>', unsafe_allow_html=True)
+                st.markdown(
+                    "<div class='style-improve-card'>"
+                    f"{html.escape(improved)}"
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button("Replace draft with improved version", key="btn_use_improved"):
+                    st.session_state["writing_text"] = improved
                     st.rerun()
 
-            if feedback.get("style_improved"):
-                with st.expander("Style Improvement"):
-                    st.markdown(feedback["style_improved"])
+        with col_feedback:
+            st.markdown('<p class="wa-block-title" style="margin-bottom:10px;">Assistant feedback</p>', unsafe_allow_html=True)
+            st.markdown("<div class='wa-feed-stack'>", unsafe_allow_html=True)
 
-            if feedback.get("redundancy"):
-                st.markdown(f"<div class='warn-box'>{feedback['redundancy']}</div>", unsafe_allow_html=True)
+            if user_text and len(user_text.strip()) >= 10:
+                content_key = hashlib.md5(f"{user_text}||{section}".encode()).hexdigest()
 
-            if feedback.get("flow_issue"):
-                st.markdown(f"<div class='warn-box'>{feedback['flow_issue']}</div>", unsafe_allow_html=True)
+                if st.session_state.get("_feedback_key") != content_key:
+                    with st.spinner("Generating suggestions…"):
+                        feedback = live_analyze(
+                            user_text=user_text,
+                            section=section,
+                            analyses=analyses,
+                            insights=insights,
+                            gaps=gaps,
+                            recommendations=recommendations,
+                        )
+                    st.session_state["_feedback"] = feedback
+                    st.session_state["_feedback_key"] = content_key
+                else:
+                    feedback = st.session_state.get("_feedback", {})
 
-            if feedback.get("metric_suggestion"):
-                st.markdown("**Suggested Metrics**")
-                st.markdown(feedback["metric_suggestion"])
+                if feedback.get("section_guide"):
+                    st.markdown('<p class="wa-block-title">Section guide</p>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='section-guide'>{html.escape(feedback['section_guide'])}</div>",
+                        unsafe_allow_html=True,
+                    )
 
-            if feedback.get("experiment_suggestion"):
-                st.markdown("**Experiment Idea**")
-                st.markdown(feedback["experiment_suggestion"])
+                if feedback.get("suggestions"):
+                    st.markdown('<p class="wa-block-title">Live suggestions</p>', unsafe_allow_html=True)
+                    for suggestion in feedback["suggestions"]:
+                        st.markdown(
+                            f"<div class='suggestion-box'>{html.escape(suggestion)}</div>",
+                            unsafe_allow_html=True,
+                        )
 
-            if feedback.get("novel_idea"):
-                with st.expander("Novel Research Idea"):
-                    st.markdown(feedback["novel_idea"])
-        else:
-            st.info("Start typing your paragraph on the left to see live feedback here.")
+                if feedback.get("context_hints"):
+                    st.markdown('<p class="wa-block-title">From retrieved papers</p>', unsafe_allow_html=True)
+                    for hint in feedback["context_hints"]:
+                        st.markdown(f"<div class='hint-box'>{html.escape(hint)}</div>", unsafe_allow_html=True)
 
-    if run_improve and user_text and len(user_text.strip()) >= 10:
-        with st.spinner("Rewriting paragraph with research context..."):
-            improved = improve_paragraph(
-                user_text=user_text,
-                section=section,
-                analyses=analyses,
-                insights=insights,
-                gaps=gaps,
-                recommendations=recommendations,
-            )
-        st.markdown("### Improved Paragraph")
-        st.markdown(
-            f"<div style='background:rgba(124,58,237,0.14);border:1px solid rgba(124,58,237,0.35);"
-            f"border-left:4px solid #7c3aed;padding:14px 18px;border-radius:12px;font-size:15px;line-height:1.8;'>"
-            f"{improved}</div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("Use Improved Version"):
-            st.session_state["writing_text"] = improved
-            st.rerun()
+                if feedback.get("style_improved"):
+                    st.markdown('<p class="wa-block-title">Style improvement</p>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='style-improve-card'>{html.escape(feedback['style_improved'])}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                flow_col, warn_col = st.columns(2, gap="small")
+                with flow_col:
+                    if feedback.get("flow_issue"):
+                        st.markdown('<p class="wa-block-title">Flow</p>', unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='warn-box' style='font-size:13px;'>{html.escape(feedback['flow_issue'])}</div>",
+                            unsafe_allow_html=True,
+                        )
+                with warn_col:
+                    if feedback.get("redundancy"):
+                        st.markdown('<p class="wa-block-title">Wording</p>', unsafe_allow_html=True)
+                        st.markdown(
+                            f"<div class='warn-box' style='font-size:13px;'>{html.escape(feedback['redundancy'])}</div>",
+                            unsafe_allow_html=True,
+                        )
+
+                if feedback.get("gap_alignment"):
+                    st.markdown('<p class="wa-block-title">Gap alignment</p>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='warn-box'>{html.escape(feedback['gap_alignment'])}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                if feedback.get("autocomplete"):
+                    st.markdown('<p class="wa-block-title">Autocomplete</p>', unsafe_allow_html=True)
+                    st.code(feedback["autocomplete"], language=None)
+                    if st.button("Accept completion", key="btn_accept_completion"):
+                        st.session_state["writing_text"] = user_text.rstrip() + " " + feedback["autocomplete"]
+                        st.rerun()
+
+                if feedback.get("metric_suggestion"):
+                    st.markdown('<p class="wa-block-title">Suggested metrics</p>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='glass-card'>{html.escape(feedback['metric_suggestion'])}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                if feedback.get("experiment_suggestion"):
+                    st.markdown('<p class="wa-block-title">Experiment idea</p>', unsafe_allow_html=True)
+                    st.markdown(
+                        f"<div class='glass-card'>{html.escape(feedback['experiment_suggestion'])}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                if feedback.get("novel_idea"):
+                    with st.expander("Novel research idea"):
+                        st.markdown(feedback["novel_idea"])
+
+            else:
+                st.info("Type at least 10 characters in the editor on the left to see structured feedback here.")
+
+            st.markdown("</div>", unsafe_allow_html=True)
