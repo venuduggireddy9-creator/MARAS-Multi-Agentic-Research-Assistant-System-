@@ -9,20 +9,34 @@ load_dotenv()
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY")) if os.getenv("GROQ_API_KEY") else None
 _LLM_MAX_WORKERS = 6
+_LAST_LLM_ERROR = ""
 
 
 def _call_llm(prompt, temperature=0.3, max_tokens=700):
+    global _LAST_LLM_ERROR
     if not client:
+        _LAST_LLM_ERROR = "GROQ_API_KEY missing or Groq client not initialized."
         return ""
     try:
-        return client.chat.completions.create(
+        response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
             max_tokens=max_tokens,
         ).choices[0].message.content.strip()
-    except Exception:
+        _LAST_LLM_ERROR = ""
+        return response
+    except Exception as exc:
+        _LAST_LLM_ERROR = str(exc)
         return ""
+
+
+def get_llm_debug_status():
+    return {
+        "api_key_loaded": bool(os.getenv("GROQ_API_KEY")),
+        "client_initialized": client is not None,
+        "last_error": _LAST_LLM_ERROR,
+    }
 
 
 def _build_context_block(analyses, insights, gaps, recommendations):
