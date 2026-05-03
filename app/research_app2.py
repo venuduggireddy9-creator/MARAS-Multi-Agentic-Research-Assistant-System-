@@ -15,8 +15,20 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from agents.query_domain_agent import detect_domains, refine_query
 from agents.ranking_agent import rank_papers
 from agents.retrieval_filter_agent import retrieve_papers
-from agents.writing_agent import get_llm_debug_status, improve_paragraph, live_analyze
+from agents import writing_agent
 from main import run_pipeline
+
+improve_paragraph = writing_agent.improve_paragraph
+live_analyze = writing_agent.live_analyze
+get_llm_debug_status = getattr(
+    writing_agent,
+    "get_llm_debug_status",
+    lambda: {
+        "api_key_loaded": bool(os.getenv("GROQ_API_KEY")),
+        "client_initialized": False,
+        "last_error": "Debug helper unavailable in deployed writing_agent version.",
+    },
+)
 
 st.set_page_config(
     layout="wide",
@@ -24,6 +36,15 @@ st.set_page_config(
     page_icon="🧠",
     initial_sidebar_state="collapsed",
 )
+
+with st.sidebar.expander("Debug: LLM health", expanded=False):
+    llm_status = get_llm_debug_status()
+    st.write("GROQ_API_KEY loaded:", llm_status["api_key_loaded"])
+    st.write("Groq client initialized:", llm_status["client_initialized"])
+    if llm_status["last_error"]:
+        st.error(f"Last LLM error: {llm_status['last_error']}")
+    else:
+        st.caption("No recent LLM errors.")
 
 st.markdown(
     """
